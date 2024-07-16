@@ -9,8 +9,10 @@ tasks:
     command: pnpm install && pnpm projen && pnpm nx build @aws/clickstream-base-lib
   
   - name: build java common lib
-    init: apt install openjdk-17-jdk openjdk-17-jre -y
+    init: sudo apt install openjdk-17-jdk openjdk-17-jre -y
     command: |
+      export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+      export PATH=$JAVA_HOME/bin/:$PATH
       cd src/data-pipeline/etl-common/
       ./gradlew clean build install
 
