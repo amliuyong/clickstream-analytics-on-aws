@@ -6,7 +6,7 @@
 
 tasks:
   - name: build clickstream-base-lib
-    command: pnpm install && pnpm projen && pnpm nx build @aws/clickstream-base-lib
+    command: pnpm install && pnpm projen && pnpm nx build @aws/clickstream-base-lib && git checkout main pnpm-lock.yaml
   
   - name: build java common lib
     init: sudo apt install openjdk-17-jdk openjdk-17-jre -y
@@ -15,5 +15,3 @@ tasks:
       export PATH=$JAVA_HOME/bin/:$PATH
       cd src/data-pipeline/etl-common/
       ./gradlew clean build install
-
-
