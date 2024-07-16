@@ -6,10 +6,12 @@
 
 tasks:
   - name: build clickstream-base-lib
-    init: pnpm install && pnpm projen && pnpm nx build @aws/clickstream-base-lib
-    command: echo "@aws/clickstream-base-lib is ready"
+    command: pnpm install && pnpm projen && pnpm nx build @aws/clickstream-base-lib
   
-  - name: test 
-    command: echo "I'm OK"
+  - name: build java common lib
+    init: apt install openjdk-17-jdk openjdk-17-jre -y
+    command: |
+      cd src/data-pipeline/etl-common/
+      ./gradlew clean build install
 
 
