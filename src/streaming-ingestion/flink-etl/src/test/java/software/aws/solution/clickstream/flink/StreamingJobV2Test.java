@@ -29,10 +29,8 @@ import software.aws.solution.clickstream.flink.mock.SourceFunctionMock;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
 import static org.apache.commons.io.FileUtils.copyInputStreamToFile;
 
@@ -47,15 +45,19 @@ public class StreamingJobV2Test extends BaseFlinkTest {
                     "{\"appId\":\"app1\",\"streamArn\":\"arn:aws:kinesis:us-east-1:123456789012:stream/app1Sink\"}" +
                     ",{\"appId\":\"app2\",\"streamArn\":\"arn:aws:kinesis:us-east-1:123456789012:stream/app2Sink\"}" +
                     "]}",
-        "v2",
-       getRuleConfigPath(),
+            "v2",
+            getRuleConfigPath(),
             "IP|UA|TRAFFIC"
 
     };
 
+    private static String getRuleConfigPath() {
+        String path = Objects.requireNonNull(StreamingJobV2Test.class.getResource("/ts/rules/app1/traffic_source_category_rule_v1.json")).toString();
+        return path.split(":")[1].replace("app1/traffic_source_category_rule_v1.json", "");
+    }
 
-    private  String[] getTestArgs(boolean withCustomParameters, double allowRetentionHours, String allowEventList) {
-      return new String[]{
+    private String[] getTestArgs(boolean withCustomParameters, double allowRetentionHours, String allowEventList) {
+        return new String[]{
                 "_",
                 TMP_GEO_LITE_2_CITY_MMDB,
                 "arn:aws:kinesis:us-east-1:123456789012:stream/testStream",
@@ -74,7 +76,7 @@ public class StreamingJobV2Test extends BaseFlinkTest {
         };
     }
 
-    private  String[] getTestArgs(String parserName, boolean withCustomParameters, double allowRetentionHours, String allowEventList) {
+    private String[] getTestArgs(String parserName, boolean withCustomParameters, double allowRetentionHours, String allowEventList, boolean enableWindowAgg) {
         return new String[]{
                 "_",
                 TMP_GEO_LITE_2_CITY_MMDB,
@@ -90,11 +92,43 @@ public class StreamingJobV2Test extends BaseFlinkTest {
                 withCustomParameters + "",  // WithCustomParameters
                 allowRetentionHours + "", // allowRetentionHours
                 allowEventList, // AllowEventList
-                parserName // TransformerName
+                parserName, // TransformerName
+                "10", // windowSlideMinutes
+                "60", // windowSizeMinutes
+                enableWindowAgg + "", // enableWindowAgg
+                "ALL" // "eventAndUserCount" //"ALL" // windowAggTypes
         };
     }
 
-    private  String[] getTestArgsForMultiApps() {
+    private String[] getTestArgs(String parserName, boolean withCustomParameters, double allowRetentionHours,
+                                 String allowEventList, boolean enableWindowAgg, boolean enableStreamIngestion) {
+
+        return new String[]{
+                "_",
+                TMP_GEO_LITE_2_CITY_MMDB,
+                "arn:aws:kinesis:us-east-1:123456789012:stream/testStream",
+                "project1",
+                "{\"appIdStreamMap\":[" +
+                        "{\"appId\":\"app1\",\"streamArn\":\"arn:aws:kinesis:us-east-1:123456789012:stream/app1Sink\"}" +
+                        ",{\"appId\":\"app2\",\"streamArn\":\"arn:aws:kinesis:us-east-1:123456789012:stream/app2Sink\"}" +
+                        "]}",
+                "v2",
+                getRuleConfigPath(),
+                "IP|UA|TRAFFIC",
+                withCustomParameters + "",  // WithCustomParameters
+                allowRetentionHours + "", // allowRetentionHours
+                allowEventList, // AllowEventList
+                parserName, // TransformerName
+                "10", // windowSlideMinutes
+                "60", // windowSizeMinutes
+                enableWindowAgg + "", // enableWindowAgg
+                "ALL", // windowAggTypes
+                enableStreamIngestion + "" // enableStreamIngestion
+
+        };
+    }
+
+    private String[] getTestArgsForMultiApps() {
         return new String[]{
                 "_",
                 TMP_GEO_LITE_2_CITY_MMDB,
@@ -115,13 +149,6 @@ public class StreamingJobV2Test extends BaseFlinkTest {
                 "ALL", // AllowEventList
                 "clickstream" // TransformerName
         };
-    }
-
-
-
-    private static String getRuleConfigPath() {
-       String path = Objects.requireNonNull(StreamingJobV2Test.class.getResource("/ts/rules/app1/traffic_source_category_rule_v1.json")).toString();
-       return path.split(":")[1].replace("app1/traffic_source_category_rule_v1.json", "");
     }
 
     @Test
@@ -151,7 +178,7 @@ public class StreamingJobV2Test extends BaseFlinkTest {
 
         List<String> app1Result = MockKinesisSink.appValues.get("app1");
 
-        String resultJson = app1Result.stream().filter(s ->s.contains("bde86c46b0594297d753f3d42cff1834")).findFirst().get();
+        String resultJson = app1Result.stream().filter(s -> s.contains("bde86c46b0594297d753f3d42cff1834")).findFirst().get();
 
         String expectedStr = resourceFileAsString("/event_v2/expected/app1-0.json");
 
@@ -185,7 +212,7 @@ public class StreamingJobV2Test extends BaseFlinkTest {
 
         List<String> app1Result = MockKinesisSink.appValues.get("app2");
 
-        String resultJson = app1Result.stream().filter(s ->s.contains("3516b363c97fad46902c293783d209ed")).findFirst().get();
+        String resultJson = app1Result.stream().filter(s -> s.contains("3516b363c97fad46902c293783d209ed")).findFirst().get();
 
         String expectedStr = resourceFileAsString("/event_v2/expected/app2-0.json");
 
@@ -220,14 +247,14 @@ public class StreamingJobV2Test extends BaseFlinkTest {
 
         List<String> app1Result = MockKinesisSink.appValues.get("app1");
 
-       Assertions.assertEquals(1, app1Result.size());
+        Assertions.assertEquals(1, app1Result.size());
     }
 
     @Test
     void testExecuteStreamJob_allow_event_list() throws Exception {
         // ./gradlew clean test --info --tests software.aws.solution.clickstream.flink.StreamingJobV2Test.testExecuteStreamJob_allow_event_list
 
-        var args = getTestArgs(false,  Integer.MAX_VALUE, "PageView3,PageView4");
+        var args = getTestArgs(false, Integer.MAX_VALUE, "PageView3,PageView4");
         var props = ApplicationParameters.loadApplicationParameters(args, true);
         var streamSourceAndSinkProviderMock = new StreamSourceAndSinkProvider() {
             @Override
@@ -250,7 +277,7 @@ public class StreamingJobV2Test extends BaseFlinkTest {
         env.execute("test");
 
         List<String> app1Result = MockKinesisSink.appValues.get("app2");
-        String resultJson = app1Result.stream().filter(s ->s.contains("3516b363c97fad46902c293783d209ed")).findFirst().get();
+        String resultJson = app1Result.stream().filter(s -> s.contains("3516b363c97fad46902c293783d209ed")).findFirst().get();
         ObjectMapper objectMapper = new ObjectMapper();
         ClickstreamEvent event = objectMapper.readValue(resultJson, ClickstreamEvent.class);
         Assertions.assertTrue(resultJson.contains("\"custom_parameters\""));
@@ -261,7 +288,7 @@ public class StreamingJobV2Test extends BaseFlinkTest {
     void testExecuteStreamJob_allow_event_list2() throws Exception {
         // ./gradlew clean test --info --tests software.aws.solution.clickstream.flink.StreamingJobV2Test.testExecuteStreamJob_allow_event_list2
 
-        var args = getTestArgs(false,  Integer.MAX_VALUE, "NoEvent1");
+        var args = getTestArgs(false, Integer.MAX_VALUE, "NoEvent1");
         var props = ApplicationParameters.loadApplicationParameters(args, true);
         var streamSourceAndSinkProviderMock = new StreamSourceAndSinkProvider() {
             @Override
@@ -291,8 +318,69 @@ public class StreamingJobV2Test extends BaseFlinkTest {
     @Test
     void testExecuteStreamJob_allow_event_list3() throws Exception {
         // ./gradlew clean test --info --tests software.aws.solution.clickstream.flink.StreamingJobV2Test.testExecuteStreamJob_allow_event_list3
+        var args = getTestArgs("clickstream", false, 10.5, "PageView3,PageView4", false);
+        var props = ApplicationParameters.loadApplicationParameters(args, true);
+        var streamSourceAndSinkProviderMock = new StreamSourceAndSinkProvider() {
+            @Override
+            public SourceFunction<String> createSource() {
+                return new SourceFunctionMock("/none_zip_data_app2.json");
+            }
 
-        var args = getTestArgs(false,  10.5, "PageView3,PageView4");
+            @Override
+            public Sink<String> createSink(String appId) {
+                return new MockKinesisSink(appId);
+            }
+        };
+
+        env.setRestartStrategy(RestartStrategies.noRestart());
+
+        EventParser eventParser = StreamingJob.getEventParser(props);
+
+        StreamingJob steamingJob = new StreamingJob(env, streamSourceAndSinkProviderMock, props, eventParser);
+        steamingJob.executeStreamJob();
+        env.execute("test");
+
+        List<String> app1Result = MockKinesisSink.appValues.get("app2");
+        Assertions.assertNull(app1Result);
+    }
+
+    @Test
+    void testExecuteStreamJob_allow_event_enableWindow() throws Exception {
+        // ./gradlew clean test --info --tests software.aws.solution.clickstream.flink.StreamingJobV2Test.testExecuteStreamJob_allow_event_enableWindow
+
+        var args = getTestArgs("clickstream", false, 10.5, "PageView3,PageView4", true);
+        var props = ApplicationParameters.loadApplicationParameters(args, true);
+        var streamSourceAndSinkProviderMock = new StreamSourceAndSinkProvider() {
+            @Override
+            public SourceFunction<String> createSource() {
+                return new SourceFunctionMock("/none_zip_data_app2.json");
+            }
+
+            @Override
+            public Sink<String> createSink(String appId) {
+                return new MockKinesisSink(appId);
+            }
+        };
+
+        env.setRestartStrategy(RestartStrategies.noRestart());
+
+        EventParser eventParser = StreamingJob.getEventParser(props);
+
+        StreamingJob steamingJob = new StreamingJob(env, streamSourceAndSinkProviderMock, props, eventParser);
+        steamingJob.executeStreamJob();
+        env.execute("test");
+
+        List<String> app1Result = MockKinesisSink.appValues.get("app2");
+        Assertions.assertNull(app1Result);
+    }
+
+    @Test
+    void testExecuteStreamJob_allow_event_disableStreamIngestion() throws Exception {
+        // ./gradlew clean test --info --tests software.aws.solution.clickstream.flink.StreamingJobV2Test.testExecuteStreamJob_allow_event_disableStreamIngestion
+
+        var args = getTestArgs("clickstream", false, 10.5, "ALL",
+                true, false);
+
         var props = ApplicationParameters.loadApplicationParameters(args, true);
         var streamSourceAndSinkProviderMock = new StreamSourceAndSinkProvider() {
             @Override
@@ -323,7 +411,7 @@ public class StreamingJobV2Test extends BaseFlinkTest {
     void testExecuteStreamJob_allow_event_list_gtm() throws Exception {
         // ./gradlew clean test --info --tests software.aws.solution.clickstream.flink.StreamingJobV2Test.testExecuteStreamJob_allow_event_list_gtm
 
-        var args = getTestArgs("gtm",false,  Integer.MAX_VALUE, "_profile_set");
+        var args = getTestArgs("gtm", false, Integer.MAX_VALUE, "_profile_set", false);
         var props = ApplicationParameters.loadApplicationParameters(args, true);
         var streamSourceAndSinkProviderMock = new StreamSourceAndSinkProvider() {
             @Override
@@ -353,7 +441,7 @@ public class StreamingJobV2Test extends BaseFlinkTest {
     void testExecuteStreamJob_allow_event_list_sensors() throws Exception {
         // ./gradlew clean test --info --tests software.aws.solution.clickstream.flink.StreamingJobV2Test.testExecuteStreamJob_allow_event_list_sensors
 
-        var args = getTestArgs("sensors", false,  Integer.MAX_VALUE, "$AppViewScreen");
+        var args = getTestArgs("sensors", false, Integer.MAX_VALUE, "$AppViewScreen", false);
         var props = ApplicationParameters.loadApplicationParameters(args, true);
         var streamSourceAndSinkProviderMock = new StreamSourceAndSinkProvider() {
             @Override

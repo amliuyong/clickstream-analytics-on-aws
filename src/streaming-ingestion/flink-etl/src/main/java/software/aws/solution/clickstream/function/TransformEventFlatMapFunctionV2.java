@@ -13,10 +13,12 @@
 
 package software.aws.solution.clickstream.function;
 
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.flink.api.common.functions.RichFlatMapFunction;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.OutputTag;
 import software.aws.solution.clickstream.common.EventParser;
 import software.aws.solution.clickstream.common.ParseRowResult;
 import software.aws.solution.clickstream.common.Util;
@@ -32,24 +34,35 @@ import java.util.Map;
 import static software.aws.solution.clickstream.flink.StreamingJob.CACHED_FILE_GEO_LITE_2_CITY_MMDB;
 
 @Slf4j
-public class TransformEventFlatMapFunctionV2 extends RichFlatMapFunction<String, String> {
+
+public class TransformEventFlatMapFunctionV2 extends ProcessFunction<String, String> {
+
     private final String projectId;
     private final String appId;
     private final EventParser eventParser;
     private final List<ClickstreamEventEnrichment> enrichments;
+    private final List<String> streamIngestionAllowEventList;
+
+    @Getter
+    private final OutputTag<ClickstreamEvent> tableRowOutputTag;
     private final boolean withCustomParameters;
 
     public TransformEventFlatMapFunctionV2(final String projectId,
                                            final String appId,
                                            final EventParser eventParser,
                                            final List<ClickstreamEventEnrichment> enrichments,
-                                           final boolean withCustomParameters
+                                           final boolean withCustomParameters,
+                                           final List<String> streamIngestionAllowEventList
     ) {
         this.projectId = projectId;
         this.appId = appId;
         this.eventParser = eventParser;
         this.enrichments = enrichments;
+        this.tableRowOutputTag = new OutputTag<>("table-row-" + appId) {
+        };
         this.withCustomParameters = withCustomParameters;
+        this.streamIngestionAllowEventList = streamIngestionAllowEventList;
+
     }
 
     @Override
@@ -65,7 +78,8 @@ public class TransformEventFlatMapFunctionV2 extends RichFlatMapFunction<String,
     }
 
     @Override
-    public void flatMap(final String value, final Collector<String> out) {
+    public void processElement(final String value, final ProcessFunction<String, String>.Context ctx, final Collector<String> out) {
+
         String delimiter = "/";
         String fileName = "file://" + appId + delimiter + Instant.now().toString();
         try {
@@ -79,7 +93,13 @@ public class TransformEventFlatMapFunctionV2 extends RichFlatMapFunction<String,
                 if (!withCustomParameters) {
                     clickstreamEvent.setCustomParameters(null);
                 }
-                out.collect(clickstreamEvent.toJson());
+                // to stream ingestion
+                if (streamIngestionAllowEventList == null
+                        || streamIngestionAllowEventList.contains(clickstreamEvent.getEventName())) {
+                    out.collect(clickstreamEvent.toJson());
+                }
+                // to table agg
+                ctx.output(tableRowOutputTag, clickstreamEvent);
             }
         } catch (Exception e) {
             if (e.getMessage().contains("Not in GZIP format")) {
