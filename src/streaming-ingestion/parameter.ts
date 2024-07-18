@@ -74,12 +74,17 @@ export interface StreamingIngestionStackProps {
     };
     eventProcessing : {
       transformerName: string;
+      enableStreamIngestion: string;
       retentionHours: number;
       allowEvents: string;
       enableUaEnrich: string;
       enableIpEnrich: string;
       enableTrafficSourceEnrich: string;
       withCustomParameters: string;
+      enableWindowAgg: string;
+      windowAggTypes: string;
+      windowSizeMinutes: number;
+      windowSlideMinutes: number;
     };
   };
 }
@@ -187,6 +192,14 @@ export function createStackParameters(scope: Construct): {
     allowedValues: [CLICKSTREAM_TRANSFORMER_NAME_PARAMETER, GTM_TRANSFORMER_NAME_PARAMETER, SENSORS_TRANSFORMER_NAME_PARAMETER],
   });
 
+  // EnableStreamIngestion
+  const enableStreamIngestionParam = new CfnParameter(scope, 'EnableStreamIngestion', {
+    description: 'Enable streaming ingestion to redshift',
+    type: 'String',
+    default: 'true',
+    allowedValues: ['true', 'false'],
+  });
+
   const retentionHoursParam = new CfnParameter(scope, 'RetentionHours', {
     description: 'The retention hours of events in the event table',
     type: 'Number',
@@ -228,6 +241,36 @@ export function createStackParameters(scope: Construct): {
     allowedValues: ['true', 'false'],
   });
 
+  // EnableWindowAgg
+  const enableWindowAggParam = new CfnParameter(scope, 'EnableWindowAgg', {
+    description: 'Enable window aggregation in Flink',
+    type: 'String',
+    default: 'false',
+    allowedValues: ['true', 'false'],
+  });
+
+  // windowAggTypes
+  const windowAggTypesParam = new CfnParameter(scope, 'WindowAggTypes', {
+    description: 'The window aggregation types, use comma to separate multiple types',
+    type: 'CommaDelimitedList',
+    default: 'eventNameTopRank,pageTitleTopRank,eventAndUserCount,trafficSourceSourceTopRank',
+  });
+
+  // windowSizeMinutes
+  const windowSizeMinutesParam = new CfnParameter(scope, 'WindowSizeMinutes', {
+    description: 'The window size in minutes',
+    type: 'Number',
+    default: 60,
+    minValue: 1,
+  });
+  // windowSlideMinutes
+  const windowSlideMinutesParam = new CfnParameter(scope, 'WindowSlideMinutes', {
+    description: 'The window slide in minutes',
+    type: 'Number',
+    default: 10,
+    minValue: 1,
+  });
+
   // Set pipeline parameters
   const pipelineParamsGroup = [];
   pipelineParamsGroup.push({
@@ -239,12 +282,19 @@ export function createStackParameters(scope: Construct): {
       pipelineS3BucketArnParam.logicalId,
       pipelineS3PrefixParam.logicalId,
       transformerNameParam.logicalId,
-      retentionHoursParam.logicalId,
+
+      enableStreamIngestionParam.logicalId,
       allowEventsParam.logicalId,
+      retentionHoursParam.logicalId,
       enableUaEnrichParam.logicalId,
       enableIpEnrichParam.logicalId,
       enableTrafficSourceEnrichParam.logicalId,
       withCustomParametersParam.logicalId,
+
+      enableWindowAggParam.logicalId,
+      windowAggTypesParam.logicalId,
+      windowSizeMinutesParam.logicalId,
+      windowSlideMinutesParam.logicalId,
     ],
   });
 
@@ -273,8 +323,11 @@ export function createStackParameters(scope: Construct): {
     [retentionHoursParam.logicalId]: {
       default: 'The retention hours of events in the event table',
     },
+    [enableStreamIngestionParam.logicalId]: {
+      default: 'Enable streaming ingestion to redshift',
+    },
     [allowEventsParam.logicalId]: {
-      default: 'The events that are allowed to be ingested',
+      default: 'The events that are allowed to be ingested to redshift in streaming ingestion',
     },
     [enableUaEnrichParam.logicalId]: {
       default: 'Enable User Agent enrichment',
@@ -287,6 +340,18 @@ export function createStackParameters(scope: Construct): {
     },
     [withCustomParametersParam.logicalId]: {
       default: 'Enable custom parameters',
+    },
+    [enableWindowAggParam.logicalId]: {
+      default: 'Enable window aggregation in Flink',
+    },
+    [windowAggTypesParam.logicalId]: {
+      default: 'The window aggregation types',
+    },
+    [windowSizeMinutesParam.logicalId]: {
+      default: 'The window size in minutes',
+    },
+    [windowSlideMinutesParam.logicalId]: {
+      default: 'The window slide in minutes',
     },
   };
 
@@ -479,12 +544,18 @@ export function createStackParameters(scope: Construct): {
         },
         eventProcessing: {
           transformerName: transformerNameParam.valueAsString,
+          enableStreamIngestion: enableStreamIngestionParam.valueAsString,
           retentionHours: retentionHoursParam.valueAsNumber,
           allowEvents: Fn.join(',', allowEventsParam.valueAsList), // convert to string
           enableUaEnrich: enableUaEnrichParam.valueAsString,
           enableIpEnrich: enableIpEnrichParam.valueAsString,
           enableTrafficSourceEnrich: enableTrafficSourceEnrichParam.valueAsString,
           withCustomParameters: withCustomParametersParam.valueAsString,
+          enableWindowAgg: enableWindowAggParam.valueAsString,
+          windowAggTypes: Fn.join(',', windowAggTypesParam.valueAsList), // convert to string
+          windowSizeMinutes: windowSizeMinutesParam.valueAsNumber,
+          windowSlideMinutes: windowSlideMinutesParam.valueAsNumber,
+
         },
       },
     },
